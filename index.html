@@ -4,124 +4,260 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geo-Quiz Team Scavenger Hunt</title>
-    
-  
-<!-- Leaflet map library -->
-<link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- SupabaseClient database library -->
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <!-- Leaflet map library -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- Supabase database library -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { height: 70vh; width: 100%; }
-        #ui-container { height: 30vh; padding: 15px; box-sizing: border-box; background: #f9f9f9; text-align: center; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
-        
-        .score-board { font-size: 22px; font-weight: bold; margin-bottom: 5px; color: #d4af37; display: flex; align-items: center; justify-content: center; }
-        .coin-icon { width: 28px; height: 28px; vertical-align: middle; margin-left: 8px; }
-        .team-display { font-size: 14px; color: #555; margin-bottom: 10px; font-style: italic; }
-        
-        .quiz-box { display: none; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        button { background: #007bff; color: white; border: none; padding: 8px 15px; margin: 5px; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        button:hover { background: #0056b3; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+
+        #map {
+            height: 70vh;
+            width: 100%;
+        }
+
+        #ui-container {
+            min-height: 30vh;
+            padding: 15px;
+            box-sizing: border-box;
+            background: #f9f9f9;
+            text-align: center;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        .score-board {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #d4af37;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .coin-icon {
+            width: 28px;
+            height: 28px;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+
+        .team-display {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+
+        .quiz-box {
+            display: none;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
+
 <body>
 
-    <!-- This element holds the interactive map display -->
+    <!-- Interactive map -->
     <div id="map"></div>
-    
-    <!-- This container handles your score updates and quiz questions -->
+
+    <!-- Score and questions -->
     <div id="ui-container">
-        <div class="score-board">Coins: <span id="coin-count">0</span> <img src="coin.png" alt="Coin" class="coin-icon"></div>
-        <div id="team-name-display" class="team-display">Connecting to team profile...</div>
-        <div id="status-message">Walk towards a marker on the map to unlock a question!</div>
-        
+
+        <div class="score-board">
+            Coins:
+            <span id="coin-count">0</span>
+            <img src="coin.png" alt="Coin" class="coin-icon">
+        </div>
+
+        <div id="team-name-display" class="team-display">
+            Connecting to team profile...
+        </div>
+
+        <div id="status-message">
+            Walk towards a marker on the map to unlock a question!
+        </div>
+
         <div id="quiz-box" class="quiz-box">
             <p id="question-text">Question goes here?</p>
             <div id="options-container"></div>
         </div>
+
     </div>
 
     <script>
-const SUPABASE_URL = 'https://iyaovwydmfwkkevucxke.supabase.co';
+        // Supabase configuration
+        const SUPABASE_URL = 'https://iyaovwydmfwkkevucxke.supabase.co';
 
-const SUPABASE_ANON_KEY = 'sb_publishable_Qq0GB0HCP4yvfxCaCspnKw_NHlwB75C';
+        const SUPABASE_ANON_KEY = 'sb_publishable_Qq0GB0HCP4yvfxCaCspnKw_NHlwB75C';
 
-const supabaseClient = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY
-);
+        const supabaseClient = window.supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_ANON_KEY
+        );
 
-        // Core App Variables
+        // Core application variables
         let coins = 0;
         let map;
         let playerMarker;
         let activeLocation = null;
-        let currentPlayerId = null; 
+        let currentPlayerId = null;
 
-        // Target Points (Decimal Degrees Converted)
-        const quizLocations = [
+        // Randomise the order of an array
+        function shuffleArray(items) {
+            const shuffled = [...items];
+
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+
+                [shuffled[i], shuffled[j]] =
+                    [shuffled[j], shuffled[i]];
+            }
+
+            return shuffled;
+        }
+
+        // Your three GPS locations
+        const locationCoordinates = [
             {
-                id: 1,
-                lat: 50.742778, 
-                lng: -1.878861, 
-                title: "Location 1 Quest",
-                question: "What year did Pokémon Go launch?",
-                options: ["2014", "2016", "2018"],
-                correct: "2016",
-                reward: 10,
-                completed: false
+                lat: 50.7447778,
+                lng: -1.8697222
             },
             {
-                id: 2,
-                lat: 50.741028, 
-                lng: -1.879667, 
-                title: "Location 2 Quest",
-                question: "Which global positioning system tracks locations via satellite?",
-                options: ["GPS", "NFC", "Bluetooth"],
-                correct: "GPS",
-                reward: 15,
-                completed: false
+                lat: 50.7315556,
+                lng: -1.8485833
             },
             {
-                id: 3,
-                lat: 50.744000, 
-                lng: -1.878472, 
-                title: "Location 3 Quest",
-                question: "How many meters is the typical unlock zone for this game?",
-                options: ["10 meters", "30 meters", "100 meters"],
-                correct: "30 meters",
-                reward: 20,
-                completed: false
+                lat: 50.7306389,
+                lng: -1.8486389
             }
         ];
 
-        // System Startup Flow
-        async function initApp() {
-            map = L.map('map').setView([50.742778, -1.878861], 16);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
+        // Question bank
+        const questionBank = [
+            {
+                question: "What's Rebs' middle name?",
+                options: [
+                    "Elaine",
+                    "Nicole",
+                    "Elizabeth"
+                ],
+                correct: "Elaine"
+            },
+            {
+                question: "What did Rebs have on toast for lunch?",
+                options: [
+                    "Pâté",
+                    "Marmite",
+                    "Peanut butter"
+                ],
+                correct: "Pâté"
+            },
+            {
+                question: "What colour are Rebs' socks?",
+                options: [
+                    "Black",
+                    "White",
+                    "Rainbow"
+                ],
+                correct: "Black"
+            }
+        ];
 
+        // Randomise which question appears at each location
+        const shuffledQuestions = shuffleArray(questionBank);
+
+        const quizLocations = locationCoordinates.map(
+            (location, index) => ({
+                id: index + 1,
+                lat: location.lat,
+                lng: location.lng,
+                title: `Location ${index + 1} Quest`,
+                question: shuffledQuestions[index].question,
+                options: shuffleArray(
+                    shuffledQuestions[index].options
+                ),
+                correct: shuffledQuestions[index].correct,
+                reward: [10, 15, 20][index],
+                completed: false
+            })
+        );
+
+        // Start the application
+        async function initApp() {
+
+            map = L.map('map').setView(
+                [50.7447778, -1.8697222],
+                16
+            );
+
+            L.tileLayer(
+                'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                {
+                    attribution: '© OpenStreetMap'
+                }
+            ).addTo(map);
+
+            // Add the three location markers
             quizLocations.forEach(loc => {
-                loc.mapMarker = L.marker([loc.lat, loc.lng]).addTo(map)
-                    .bindPopup(`<b>${loc.title}</b><br>Get close to unlock!`);
+
+                loc.mapMarker = L.marker([
+                    loc.lat,
+                    loc.lng
+                ])
+                .addTo(map)
+                .bindPopup(
+                    `<b>${loc.title}</b><br>Get close to unlock!`
+                );
+
             });
 
             await loginTeam();
+
             startTracking();
         }
 
-        // Prompt user and synchronize with SupabaseClient Database Rows
+        // Select a team and connect to Supabase
         async function loginTeam() {
-            let choice = prompt("Type 1 for Red Team, or Type 2 for Blue Team:");
+
+            let choice = prompt(
+                "Type 1 for Red Team, or Type 2 for Blue Team:"
+            );
+
             let teamName = "";
 
             if (choice === "1") {
@@ -132,181 +268,349 @@ const supabaseClient = window.supabase.createClient(
                 teamName = "Guest Team";
             }
 
-            let { data: player, error } = await supabaseClient
+            const { data: player, error } = await supabaseClient
                 .from('players')
                 .select('*')
                 .eq('username', teamName)
-                .single();
+                .maybeSingle();
+
+            if (error) {
+                console.error("Team lookup failed:", error);
+
+                document.getElementById(
+                    'team-name-display'
+                ).innerText = "Could not connect to team profile.";
+
+                return;
+            }
 
             if (player) {
+
                 currentPlayerId = player.id;
                 coins = player.coins;
-                document.getElementById('team-name-display').innerText = `Playing as: ${player.username} (Saved Profile)`;
+
+                document.getElementById(
+                    'team-name-display'
+                ).innerText =
+                    `Playing as: ${player.username} (Saved Profile)`;
+
             } else {
-                let { data: newPlayer, error: insertError } = await supabaseClient
-                    .from('players')
-                    .insert([{ username: teamName, coins: 0 }])
-                    .select()
-                    .single();
-                
-                if (newPlayer) {
-                    currentPlayerId = newPlayer.id;
-                    coins = 0;
-                    document.getElementById('team-name-display').innerText = `Playing as: ${newPlayer.username} (New Profile)`;
+
+                const { data: newPlayer, error: insertError } =
+                    await supabaseClient
+                        .from('players')
+                        .insert([
+                            {
+                                username: teamName,
+                                coins: 0
+                            }
+                        ])
+                        .select()
+                        .single();
+
+                if (insertError || !newPlayer) {
+
+                    console.error(
+                        "Could not create team:",
+                        insertError
+                    );
+
+                    document.getElementById(
+                        'team-name-display'
+                    ).innerText =
+                        "Could not create team profile.";
+
+                    return;
                 }
+
+                currentPlayerId = newPlayer.id;
+                coins = 0;
+
+                document.getElementById(
+                    'team-name-display'
+                ).innerText =
+                    `Playing as: ${newPlayer.username} (New Profile)`;
             }
 
-            document.getElementById('coin-count').innerText = coins;
+            document.getElementById(
+                'coin-count'
+            ).innerText = coins;
         }
 
-        // Manage Mobile Device Location Data Streams
+        // Track the player's GPS location
         function startTracking() {
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(
-                    (position) => {
-                        const pLat = position.coords.latitude;
-                        const pLng = position.coords.longitude;
 
-                        if (!playerMarker) {
-                            playerMarker = L.circleMarker([pLat, pLng], { color: 'red', radius: 10 }).addTo(map)
-                                .bindPopup("<b>Your Position</b>").openPopup();
-                            map.setView([pLat, pLng], 16);
-                        } else {
-                            playerMarker.setLatLng([pLat, pLng]);
-                        }
+            if (!navigator.geolocation) {
 
-                        checkProximity(pLat, pLng);
-                    },
-                    (err) => {
-                        document.getElementById('status-message').innerText = "GPS access denied. Please enable location permissions.";
-                    },
-                    { enableHighAccuracy: true }
-                );
+                document.getElementById(
+                    'status-message'
+                ).innerText =
+                    "Your device does not support GPS location.";
+
+                return;
             }
+
+            navigator.geolocation.watchPosition(
+
+                (position) => {
+
+                    const pLat = position.coords.latitude;
+                    const pLng = position.coords.longitude;
+
+                    if (!playerMarker) {
+
+                        playerMarker = L.circleMarker(
+                            [pLat, pLng],
+                            {
+                                color: 'red',
+                                radius: 10
+                            }
+                        )
+                        .addTo(map)
+                        .bindPopup("<b>Your Position</b>")
+                        .openPopup();
+
+                        map.setView([pLat, pLng], 16);
+
+                    } else {
+
+                        playerMarker.setLatLng([pLat, pLng]);
+
+                    }
+
+                    checkProximity(pLat, pLng);
+                },
+
+                (err) => {
+
+                    console.error("GPS error:", err);
+
+                    document.getElementById(
+                        'status-message'
+                    ).innerText =
+                        "GPS access denied. Please enable location permissions.";
+
+                },
+
+                {
+                    enableHighAccuracy: true
+                }
+            );
         }
 
-        // Distance Check Math (Haversine Formula)
+        // Calculate the distance between two GPS coordinates
         function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; 
-            const phi1 = lat1 * Math.PI/180;
-            const phi2 = lat2 * Math.PI/180;
-            const deltaPhi = (lat2-lat1) * Math.PI/180;
-            const deltaLambda = (lon2-lon1) * Math.PI/180;
 
-            const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
-                      Math.cos(phi1) * Math.cos(phi2) *
-                      Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c; 
+            const R = 6371e3;
+
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+
+            const deltaPhi =
+                (lat2 - lat1) * Math.PI / 180;
+
+            const deltaLambda =
+                (lon2 - lon1) * Math.PI / 180;
+
+            const a =
+                Math.sin(deltaPhi / 2) *
+                Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) *
+                Math.cos(phi2) *
+                Math.sin(deltaLambda / 2) *
+                Math.sin(deltaLambda / 2);
+
+            const c = 2 * Math.atan2(
+                Math.sqrt(a),
+                Math.sqrt(1 - a)
+            );
+
+            return R * c;
         }
 
+        // Unlock questions when a player is within 30 metres
         function checkProximity(playerLat, playerLng) {
+
             let foundNearby = false;
 
             quizLocations.forEach(loc => {
+
                 if (loc.completed) return;
 
-                const distance = getDistance(playerLat, playerLng, loc.lat, loc.lng);
-                
-                if (distance <= 30) { 
+                const distance = getDistance(
+                    playerLat,
+                    playerLng,
+                    loc.lat,
+                    loc.lng
+                );
+
+                if (distance <= 30) {
+
                     foundNearby = true;
+
                     if (activeLocation !== loc) {
+
                         activeLocation = loc;
+
                         triggerQuiz(loc);
                     }
                 }
             });
 
             if (!foundNearby && activeLocation) {
+
                 activeLocation = null;
-                document.getElementById('quiz-box').style.display = 'none';
-                document.getElementById('status-message').style.display = 'block';
-                document.getElementById('status-message').innerText = "Walk towards a marker on the map to unlock a question!";
+
+                document.getElementById(
+                    'quiz-box'
+                ).style.display = 'none';
+
+                document.getElementById(
+                    'status-message'
+                ).style.display = 'block';
+
+                document.getElementById(
+                    'status-message'
+                ).innerText =
+                    "Walk towards a marker on the map to unlock a question!";
             }
         }
 
+        // Display the question and its answer options
         function triggerQuiz(loc) {
-            document.getElementById('status-message').style.display = 'none';
-            const quizBox = document.getElementById('quiz-box');
+
+            document.getElementById(
+                'status-message'
+            ).style.display = 'none';
+
+            const quizBox = document.getElementById(
+                'quiz-box'
+            );
+
             quizBox.style.display = 'block';
-            
-            document.getElementById('question-text').innerText = `${loc.title}: ${loc.question}`;
-            const optionsContainer = document.getElementById('options-container');
-            optionsContainer.innerHTML = ''; 
+
+            document.getElementById(
+                'question-text'
+            ).innerText =
+                `${loc.title}: ${loc.question}`;
+
+            const optionsContainer = document.getElementById(
+                'options-container'
+            );
+
+            optionsContainer.innerHTML = '';
 
             loc.options.forEach(opt => {
+
                 const btn = document.createElement('button');
+
                 btn.innerText = opt;
+
                 btn.onclick = () => submitAnswer(opt, loc);
+
                 optionsContainer.appendChild(btn);
+
             });
         }
 
-       async function submitAnswer(selected, loc) {
-    const buttons = document.querySelectorAll(
-        '#options-container button'
-    );
+        // Check the answer and save the team's score
+        async function submitAnswer(selected, loc) {
 
-    buttons.forEach(button => {
-        button.disabled = true;
-    });
+            const buttons = document.querySelectorAll(
+                '#options-container button'
+            );
 
-    if (selected !== loc.correct) {
-        alert("Incorrect answer! Try again.");
+            buttons.forEach(button => {
+                button.disabled = true;
+            });
 
-        buttons.forEach(button => {
-            button.disabled = false;
-        });
+            if (selected !== loc.correct) {
 
-        return;
-    }
+                alert("Incorrect answer! Try again.");
 
-    if (!currentPlayerId) {
-        alert("Your team hasn't connected to the database yet.");
-        buttons.forEach(button => {
-            button.disabled = false;
-        });
-        return;
-    }
+                buttons.forEach(button => {
+                    button.disabled = false;
+                });
 
-    const newCoins = coins + loc.reward;
+                return;
+            }
 
-    const { data, error } = await supabaseClient
-        .from('players')
-        .update({ coins: newCoins })
-        .eq('id', currentPlayerId)
-        .select('id, coins')
-        .single();
+            if (!currentPlayerId) {
 
-    if (error || !data) {
-        console.error("Score save failed:", error);
-        alert("Couldn't save your score. Please try again.");
+                alert(
+                    "Your team hasn't connected to the database yet."
+                );
 
-        buttons.forEach(button => {
-            button.disabled = false;
-        });
+                buttons.forEach(button => {
+                    button.disabled = false;
+                });
 
-        return;
-    }
+                return;
+            }
 
-    coins = data.coins;
+            const newCoins = coins + loc.reward;
 
-    document.getElementById('coin-count').innerText = coins;
+            const { data, error } = await supabaseClient
+                .from('players')
+                .update({
+                    coins: newCoins
+                })
+                .eq('id', currentPlayerId)
+                .select('id, coins')
+                .single();
 
-    loc.completed = true;
-    map.removeLayer(loc.mapMarker);
+            if (error || !data) {
 
-    document.getElementById('quiz-box').style.display = 'none';
-    document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').innerText =
-        `Quest completed! You earned ${loc.reward} coins.`;
+                console.error(
+                    "Score save failed:",
+                    error
+                );
 
-    activeLocation = null;
+                alert(
+                    "Couldn't save your score. Please try again."
+                );
 
-    alert(`Correct! Your team earned ${loc.reward} coins!`);
-}
-window.onload = initApp;
-</script>
+                buttons.forEach(button => {
+                    button.disabled = false;
+                });
+
+                return;
+            }
+
+            coins = data.coins;
+
+            document.getElementById(
+                'coin-count'
+            ).innerText = coins;
+
+            loc.completed = true;
+
+            map.removeLayer(loc.mapMarker);
+
+            document.getElementById(
+                'quiz-box'
+            ).style.display = 'none';
+
+            document.getElementById(
+                'status-message'
+            ).style.display = 'block';
+
+            document.getElementById(
+                'status-message'
+            ).innerText =
+                `Quest completed! You earned ${loc.reward} coins.`;
+
+            activeLocation = null;
+
+            alert(
+                `Correct! Your team earned ${loc.reward} coins!`
+            );
+        }
+
+        // Run the application when the page loads
+        window.onload = initApp;
+
+    </script>
+
 </body>
 </html>
-
