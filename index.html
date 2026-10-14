@@ -3,16 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Geo-Quiz Team Scavenger Hunt</title>
 
-    <!-- Leaflet map library -->
     <link
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    >
 
-    <!-- Supabase database library -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
     <style>
@@ -23,12 +22,12 @@
         }
 
         #map {
-            height: 70vh;
+            height: 65vh;
             width: 100%;
         }
 
         #ui-container {
-            min-height: 30vh;
+            min-height: 35vh;
             padding: 15px;
             box-sizing: border-box;
             background: #f9f9f9;
@@ -37,46 +36,46 @@
         }
 
         .score-board {
-            font-size: 22px;
+            font-size: 24px;
             font-weight: bold;
             margin-bottom: 5px;
-            color: #d4af37;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .coin-icon {
-            width: 28px;
-            height: 28px;
-            vertical-align: middle;
-            margin-left: 8px;
+            color: #b38b00;
         }
 
         .team-display {
             font-size: 14px;
             color: #555;
-            margin-bottom: 10px;
-            font-style: italic;
+            margin-bottom: 12px;
+        }
+
+        #status-message {
+            margin: 10px 0;
         }
 
         .quiz-box {
             display: none;
             background: white;
-            padding: 10px;
+            padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #options-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 5px;
         }
 
         button {
             background: #007bff;
             color: white;
             border: none;
-            padding: 8px 15px;
+            padding: 10px 15px;
             margin: 5px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 15px;
         }
 
         button:hover {
@@ -84,341 +83,343 @@
         }
 
         button:disabled {
-            opacity: 0.6;
+            background: #999;
             cursor: not-allowed;
+        }
+
+        #loading-message {
+            padding: 20px;
         }
     </style>
 </head>
 
 <body>
 
-    <!-- Interactive map -->
     <div id="map"></div>
 
-    <!-- Score and questions -->
     <div id="ui-container">
 
         <div class="score-board">
-            Coins:
-            <span id="coin-count">0</span>
-            <img src="coin.png" alt="Coin" class="coin-icon">
+            Coins: <span id="coin-count">0</span>
         </div>
 
         <div id="team-name-display" class="team-display">
-            Connecting to team profile...
+            Connecting to database...
         </div>
 
         <div id="status-message">
-            Walk towards a marker on the map to unlock a question!
+            Loading your game...
         </div>
 
         <div id="quiz-box" class="quiz-box">
-            <p id="question-text">Question goes here?</p>
+            <h3 id="question-title"></h3>
+
+            <p id="question-text"></p>
+
             <div id="options-container"></div>
         </div>
 
     </div>
 
     <script>
-        // Supabase configuration
-        const SUPABASE_URL = 'https://iyaovwydmfwkkevucxke.supabase.co';
+        // =========================================
+        // SUPABASE CONNECTION
+        // =========================================
 
-        const SUPABASE_ANON_KEY = 'sb_publishable_Qq0GB0HCP4yvfxCaCspnKw_NHlwB75C';
+        const SUPABASE_URL =
+            'https://iyaovwydmfwkkevucxke.supabase.co';
+
+        const SUPABASE_ANON_KEY =
+            'sb_publishable_Qq0GB0HCP4yvfxCaCspnKw_NHlwB75C';
 
         const supabaseClient = window.supabase.createClient(
             SUPABASE_URL,
             SUPABASE_ANON_KEY
         );
 
-        // Core application variables
-        let coins = 0;
+
+        // =========================================
+        // GAME VARIABLES
+        // =========================================
+
         let map;
         let playerMarker;
-        let activeLocation = null;
         let currentPlayerId = null;
+        let currentTeamName = '';
+        let coins = 0;
+        let quizLocations = [];
+        let activeLocation = null;
+        let isSubmitting = false;
 
-        // Randomise the order of an array
-        function shuffleArray(items) {
-            const shuffled = [...items];
 
-            for (let i = shuffled.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
+        // =========================================
+        // START THE GAME
+        // =========================================
 
-                [shuffled[i], shuffled[j]] =
-                    [shuffled[j], shuffled[i]];
-            }
-
-            return shuffled;
-        }
-
-        // Your three GPS locations
-        const locationCoordinates = [
-            {
-                lat: 50.7447778,
-                lng: -1.8697222
-            },
-            {
-                lat: 50.7315556,
-                lng: -1.8485833
-            },
-            {
-                lat: 50.7306389,
-                lng: -1.8486389
-            }
-        ];
-
-        // Question bank
-        const questionBank = [
-            {
-                question: "What's Rebs' middle name?",
-                options: [
-                    "Elaine",
-                    "Nicole",
-                    "Elizabeth"
-                ],
-                correct: "Elaine"
-            },
-            {
-                question: "What did Rebs have on toast for lunch?",
-                options: [
-                    "Pâté",
-                    "Marmite",
-                    "Peanut butter"
-                ],
-                correct: "Pâté"
-            },
-            {
-                question: "What colour are Rebs' socks?",
-                options: [
-                    "Black",
-                    "White",
-                    "Rainbow"
-                ],
-                correct: "Black"
-            }
-        ];
-
-        // Randomise which question appears at each location
-        const shuffledQuestions = shuffleArray(questionBank);
-
-        const quizLocations = locationCoordinates.map(
-            (location, index) => ({
-                id: index + 1,
-                lat: location.lat,
-                lng: location.lng,
-                title: `Location ${index + 1} Quest`,
-                question: shuffledQuestions[index].question,
-                options: shuffleArray(
-                    shuffledQuestions[index].options
-                ),
-                correct: shuffledQuestions[index].correct,
-                reward: [10, 15, 20][index],
-                completed: false
-            })
-        );
-
-        // Start the application
         async function initApp() {
-
             map = L.map('map').setView(
                 [50.7447778, -1.8697222],
-                16
+                15
             );
 
             L.tileLayer(
                 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                 {
-                    attribution: '© OpenStreetMap'
+                    attribution: '© OpenStreetMap contributors'
                 }
             ).addTo(map);
 
-            // Add the three location markers
-            quizLocations.forEach(loc => {
+            try {
+                await loginTeam();
 
-                loc.mapMarker = L.marker([
-                    loc.lat,
-                    loc.lng
-                ])
-                .addTo(map)
-                .bindPopup(
-                    `<b>${loc.title}</b><br>Get close to unlock!`
-                );
+                await loadQuestions();
 
-            });
+                await loadAnsweredQuestions();
 
-            await loginTeam();
+                displayQuestionsOnMap();
 
-            startTracking();
+                startTracking();
+
+            } catch (error) {
+                console.error('Game startup error:', error);
+
+                document.getElementById('status-message').innerText =
+                    'The game could not load. Please refresh the page and try again.';
+            }
         }
 
-        // Select a team and connect to Supabase
+
+        // =========================================
+        // TEAM LOGIN
+        // =========================================
+
         async function loginTeam() {
+            let choice;
 
-            let choice = prompt(
-                "Type 1 for Red Team, or Type 2 for Blue Team:"
-            );
+            while (choice !== '1' && choice !== '2') {
+                choice = prompt(
+                    'Choose your team:\n\n' +
+                    'Type 1 for Red Team\n' +
+                    'Type 2 for Blue Team'
+                );
 
-            let teamName = "";
+                if (choice === null) {
+                    throw new Error('Team selection cancelled.');
+                }
 
-            if (choice === "1") {
-                teamName = "Red Team";
-            } else if (choice === "2") {
-                teamName = "Blue Team";
-            } else {
-                teamName = "Guest Team";
+                choice = choice.trim();
+
+                if (choice !== '1' && choice !== '2') {
+                    alert('Please enter 1 for Red Team or 2 for Blue Team.');
+                }
             }
+
+            currentTeamName =
+                choice === '1' ? 'Red Team' : 'Blue Team';
 
             const { data: player, error } = await supabaseClient
                 .from('players')
-                .select('*')
-                .eq('username', teamName)
-                .maybeSingle();
+                .select('id, username, coins')
+                .eq('username', currentTeamName)
+                .single();
 
-            if (error) {
-                console.error("Team lookup failed:", error);
+            if (error || !player) {
+                console.error('Team login error:', error);
 
-                document.getElementById(
-                    'team-name-display'
-                ).innerText = "Could not connect to team profile.";
-
-                return;
+                throw new Error(
+                    'Could not find your team in the players table.'
+                );
             }
 
-            if (player) {
+            currentPlayerId = player.id;
+            coins = Number(player.coins) || 0;
 
-                currentPlayerId = player.id;
-                coins = player.coins;
+            document.getElementById('team-name-display').innerText =
+                'Playing as: ' + player.username;
 
-                document.getElementById(
-                    'team-name-display'
-                ).innerText =
-                    `Playing as: ${player.username} (Saved Profile)`;
-
-            } else {
-
-                const { data: newPlayer, error: insertError } =
-                    await supabaseClient
-                        .from('players')
-                        .insert([
-                            {
-                                username: teamName,
-                                coins: 0
-                            }
-                        ])
-                        .select()
-                        .single();
-
-                if (insertError || !newPlayer) {
-
-                    console.error(
-                        "Could not create team:",
-                        insertError
-                    );
-
-                    document.getElementById(
-                        'team-name-display'
-                    ).innerText =
-                        "Could not create team profile.";
-
-                    return;
-                }
-
-                currentPlayerId = newPlayer.id;
-                coins = 0;
-
-                document.getElementById(
-                    'team-name-display'
-                ).innerText =
-                    `Playing as: ${newPlayer.username} (New Profile)`;
-            }
-
-            document.getElementById(
-                'coin-count'
-            ).innerText = coins;
+            updateScoreDisplay();
         }
 
-        // Track the player's GPS location
+
+        // =========================================
+        // LOAD QUESTIONS FROM SUPABASE
+        // =========================================
+
+        async function loadQuestions() {
+            const { data, error } = await supabaseClient
+                .from('quiz_questions_public')
+                .select(
+                    'id, title, latitude, longitude, question, options, reward, unlock_distance'
+                )
+                .order('id');
+
+            if (error) {
+                console.error('Question loading error:', error);
+                throw error;
+            }
+
+            if (!data || data.length === 0) {
+                throw new Error(
+                    'No active questions were found in Supabase.'
+                );
+            }
+
+            quizLocations = data.map(question => ({
+                id: question.id,
+                title: question.title,
+                lat: Number(question.latitude),
+                lng: Number(question.longitude),
+                question: question.question,
+                options: question.options,
+                reward: Number(question.reward),
+                unlockDistance: Number(question.unlock_distance),
+                completed: false,
+                mapMarker: null
+            }));
+        }
+
+
+        // =========================================
+        // LOAD QUESTIONS ALREADY ATTEMPTED
+        // =========================================
+
+        async function loadAnsweredQuestions() {
+            const { data, error } = await supabaseClient
+                .from('question_answers')
+                .select('question_id')
+                .eq('player_id', currentPlayerId);
+
+            if (error) {
+                console.error('Answer history loading error:', error);
+                throw error;
+            }
+
+            const answeredIds = new Set(
+                (data || []).map(row => Number(row.question_id))
+            );
+
+            quizLocations.forEach(location => {
+                location.completed = answeredIds.has(
+                    Number(location.id)
+                );
+            });
+        }
+
+
+        // =========================================
+        // DISPLAY QUESTION MARKERS
+        // =========================================
+
+        function displayQuestionsOnMap() {
+            quizLocations.forEach(location => {
+                const popupText = location.completed
+                    ? '<b>' + location.title + '</b><br>Already attempted by your team.'
+                    : '<b>' + location.title + '</b><br>Get close to unlock the question!';
+
+                location.mapMarker = L.marker([
+                    location.lat,
+                    location.lng
+                ]).addTo(map).bindPopup(popupText);
+
+                if (location.completed) {
+                    location.mapMarker.setOpacity(0.45);
+                }
+            });
+
+            const bounds = L.latLngBounds(
+                quizLocations.map(location => [
+                    location.lat,
+                    location.lng
+                ])
+            );
+
+            map.fitBounds(bounds, {
+                padding: [30, 30],
+                maxZoom: 16
+            });
+
+            const remaining = quizLocations.filter(
+                location => !location.completed
+            ).length;
+
+            document.getElementById('status-message').innerText =
+                remaining === 0
+                    ? 'Your team has attempted every available question!'
+                    : 'Walk towards a marker to unlock a question!';
+        }
+
+
+        // =========================================
+        // GPS TRACKING
+        // =========================================
+
         function startTracking() {
-
             if (!navigator.geolocation) {
-
-                document.getElementById(
-                    'status-message'
-                ).innerText =
-                    "Your device does not support GPS location.";
+                document.getElementById('status-message').innerText =
+                    'Your device does not support GPS location.';
 
                 return;
             }
 
             navigator.geolocation.watchPosition(
-
-                (position) => {
-
-                    const pLat = position.coords.latitude;
-                    const pLng = position.coords.longitude;
+                position => {
+                    const playerLat = position.coords.latitude;
+                    const playerLng = position.coords.longitude;
 
                     if (!playerMarker) {
-
                         playerMarker = L.circleMarker(
-                            [pLat, pLng],
+                            [playerLat, playerLng],
                             {
                                 color: 'red',
-                                radius: 10
+                                radius: 9
                             }
-                        )
-                        .addTo(map)
-                        .bindPopup("<b>Your Position</b>")
-                        .openPopup();
+                        ).addTo(map);
 
-                        map.setView([pLat, pLng], 16);
-
+                        playerMarker.bindPopup('Your position');
                     } else {
-
-                        playerMarker.setLatLng([pLat, pLng]);
-
+                        playerMarker.setLatLng([
+                            playerLat,
+                            playerLng
+                        ]);
                     }
 
-                    checkProximity(pLat, pLng);
+                    checkProximity(playerLat, playerLng);
                 },
 
-                (err) => {
+                error => {
+                    console.error('GPS error:', error);
 
-                    console.error("GPS error:", err);
-
-                    document.getElementById(
-                        'status-message'
-                    ).innerText =
-                        "GPS access denied. Please enable location permissions.";
-
+                    document.getElementById('status-message').innerText =
+                        'GPS access is unavailable. Please allow location access in your browser settings.';
                 },
 
                 {
-                    enableHighAccuracy: true
+                    enableHighAccuracy: true,
+                    maximumAge: 3000,
+                    timeout: 15000
                 }
             );
         }
 
-        // Calculate the distance between two GPS coordinates
-        function getDistance(lat1, lon1, lat2, lon2) {
 
-            const R = 6371e3;
+        // =========================================
+        // DISTANCE CALCULATION
+        // =========================================
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
 
             const phi1 = lat1 * Math.PI / 180;
             const phi2 = lat2 * Math.PI / 180;
 
-            const deltaPhi =
-                (lat2 - lat1) * Math.PI / 180;
-
-            const deltaLambda =
-                (lon2 - lon1) * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
 
             const a =
-                Math.sin(deltaPhi / 2) *
-                Math.sin(deltaPhi / 2) +
+                Math.sin(deltaPhi / 2) ** 2 +
                 Math.cos(phi1) *
                 Math.cos(phi2) *
-                Math.sin(deltaLambda / 2) *
-                Math.sin(deltaLambda / 2);
+                Math.sin(deltaLambda / 2) ** 2;
 
             const c = 2 * Math.atan2(
                 Math.sqrt(a),
@@ -428,93 +429,105 @@
             return R * c;
         }
 
-        // Unlock questions when a player is within 30 metres
+
+        // =========================================
+        // CHECK WHETHER A QUESTION CAN BE UNLOCKED
+        // =========================================
+
         function checkProximity(playerLat, playerLng) {
+            if (isSubmitting) {
+                return;
+            }
 
-            let foundNearby = false;
-
-            quizLocations.forEach(loc => {
-
-                if (loc.completed) return;
+            const nearbyLocation = quizLocations.find(location => {
+                if (location.completed) {
+                    return false;
+                }
 
                 const distance = getDistance(
                     playerLat,
                     playerLng,
-                    loc.lat,
-                    loc.lng
+                    location.lat,
+                    location.lng
                 );
 
-                if (distance <= 30) {
-
-                    foundNearby = true;
-
-                    if (activeLocation !== loc) {
-
-                        activeLocation = loc;
-
-                        triggerQuiz(loc);
-                    }
-                }
+                return distance <= location.unlockDistance;
             });
 
-            if (!foundNearby && activeLocation) {
+            if (nearbyLocation) {
+                if (activeLocation !== nearbyLocation) {
+                    activeLocation = nearbyLocation;
+                    triggerQuiz(nearbyLocation);
+                }
 
+                return;
+            }
+
+            if (activeLocation) {
                 activeLocation = null;
 
-                document.getElementById(
-                    'quiz-box'
-                ).style.display = 'none';
+                document.getElementById('quiz-box').style.display = 'none';
 
-                document.getElementById(
-                    'status-message'
-                ).style.display = 'block';
+                document.getElementById('status-message').style.display =
+                    'block';
 
-                document.getElementById(
-                    'status-message'
-                ).innerText =
-                    "Walk towards a marker on the map to unlock a question!";
+                document.getElementById('status-message').innerText =
+                    'Walk towards a marker to unlock a question!';
             }
         }
 
-        // Display the question and its answer options
-        function triggerQuiz(loc) {
 
-            document.getElementById(
-                'status-message'
-            ).style.display = 'none';
+        // =========================================
+        // SHOW THE QUESTION
+        // =========================================
 
-            const quizBox = document.getElementById(
-                'quiz-box'
-            );
+        function triggerQuiz(location) {
+            document.getElementById('status-message').style.display =
+                'none';
 
-            quizBox.style.display = 'block';
+            document.getElementById('quiz-box').style.display =
+                'block';
 
-            document.getElementById(
-                'question-text'
-            ).innerText =
-                `${loc.title}: ${loc.question}`;
+            document.getElementById('question-title').innerText =
+                location.title;
 
-            const optionsContainer = document.getElementById(
-                'options-container'
-            );
+            document.getElementById('question-text').innerText =
+                location.question;
+
+            const optionsContainer =
+                document.getElementById('options-container');
 
             optionsContainer.innerHTML = '';
 
-            loc.options.forEach(opt => {
+            location.options.forEach(option => {
+                const button = document.createElement('button');
 
-                const btn = document.createElement('button');
+                button.innerText = option;
 
-                btn.innerText = opt;
+                button.onclick = () => {
+                    submitAnswer(option, location);
+                };
 
-                btn.onclick = () => submitAnswer(opt, loc);
-
-                optionsContainer.appendChild(btn);
-
+                optionsContainer.appendChild(button);
             });
         }
 
-        // Check the answer and save the team's score
-        async function submitAnswer(selected, loc) {
+
+        // =========================================
+        // SUBMIT ANSWER AND SAVE SCORE
+        // =========================================
+
+        async function submitAnswer(selectedAnswer, location) {
+            if (isSubmitting || location.completed) {
+                return;
+            }
+
+            if (!currentPlayerId) {
+                alert('Your team is not connected to the database.');
+                return;
+            }
+
+            isSubmitting = true;
 
             const buttons = document.querySelectorAll(
                 '#options-container button'
@@ -524,90 +537,136 @@
                 button.disabled = true;
             });
 
-            if (selected !== loc.correct) {
+            document.getElementById('status-message').style.display =
+                'block';
 
-                alert("Incorrect answer! Try again.");
+            document.getElementById('status-message').innerText =
+                'Saving your answer...';
+
+            try {
+                const { data, error } = await supabaseClient.rpc(
+                    'submit_quiz_answer',
+                    {
+                        p_player_id: currentPlayerId,
+                        p_question_id: location.id,
+                        p_submitted_answer: selectedAnswer
+                    }
+                );
+
+                if (error) {
+                    console.error('Answer submission error:', error);
+                    throw error;
+                }
+
+                if (!data || !data.success) {
+                    if (
+                        data &&
+                        data.message === 'Question already attempted'
+                    ) {
+                        location.completed = true;
+
+                        document.getElementById('quiz-box').style.display =
+                            'none';
+
+                        document.getElementById('status-message').innerText =
+                            'Your team has already attempted this question.';
+
+                        activeLocation = null;
+
+                        await refreshScore();
+
+                        return;
+                    }
+
+                    throw new Error(
+                        data && data.message
+                            ? data.message
+                            : 'The answer could not be saved.'
+                    );
+                }
+
+                // A correct OR incorrect answer counts as the one attempt.
+                location.completed = true;
+
+                location.mapMarker.setOpacity(0.45);
+
+                location.mapMarker.setPopupContent(
+                    '<b>' + location.title +
+                    '</b><br>Already attempted by your team.'
+                );
+
+                await refreshScore();
+
+                document.getElementById('quiz-box').style.display = 'none';
+
+                if (data.correct) {
+                    document.getElementById('status-message').innerText =
+                        'Correct! Your team earned ' +
+                        data.points_awarded +
+                        ' coins.';
+                } else {
+                    document.getElementById('status-message').innerText =
+                        'Incorrect answer. Your team has used its attempt for this question.';
+                }
+
+                activeLocation = null;
+
+                const remaining = quizLocations.filter(
+                    item => !item.completed
+                ).length;
+
+                if (remaining === 0) {
+                    document.getElementById('status-message').innerText +=
+                        ' Your team has attempted every question!';
+                }
+
+            } catch (error) {
+                console.error('Could not submit answer:', error);
+
+                document.getElementById('status-message').innerText =
+                    'Your answer could not be saved. Please try again.';
 
                 buttons.forEach(button => {
                     button.disabled = false;
                 });
 
-                return;
+            } finally {
+                isSubmitting = false;
             }
-
-            if (!currentPlayerId) {
-
-                alert(
-                    "Your team hasn't connected to the database yet."
-                );
-
-                buttons.forEach(button => {
-                    button.disabled = false;
-                });
-
-                return;
-            }
-
-            const newCoins = coins + loc.reward;
-
-            const { data, error } = await supabaseClient
-                .from('players')
-                .update({
-                    coins: newCoins
-                })
-                .eq('id', currentPlayerId)
-                .select('id, coins')
-                .single();
-
-            if (error || !data) {
-
-                console.error(
-                    "Score save failed:",
-                    error
-                );
-
-                alert(
-                    "Couldn't save your score. Please try again."
-                );
-
-                buttons.forEach(button => {
-                    button.disabled = false;
-                });
-
-                return;
-            }
-
-            coins = data.coins;
-
-            document.getElementById(
-                'coin-count'
-            ).innerText = coins;
-
-            loc.completed = true;
-
-            map.removeLayer(loc.mapMarker);
-
-            document.getElementById(
-                'quiz-box'
-            ).style.display = 'none';
-
-            document.getElementById(
-                'status-message'
-            ).style.display = 'block';
-
-            document.getElementById(
-                'status-message'
-            ).innerText =
-                `Quest completed! You earned ${loc.reward} coins.`;
-
-            activeLocation = null;
-
-            alert(
-                `Correct! Your team earned ${loc.reward} coins!`
-            );
         }
 
-        // Run the application when the page loads
+
+        // =========================================
+        // REFRESH THE SAVED SCORE
+        // =========================================
+
+        async function refreshScore() {
+            const { data, error } = await supabaseClient
+                .from('players')
+                .select('coins')
+                .eq('id', currentPlayerId)
+                .single();
+
+            if (error) {
+                console.error('Could not refresh score:', error);
+                return;
+            }
+
+            coins = Number(data.coins) || 0;
+
+            updateScoreDisplay();
+        }
+
+
+        function updateScoreDisplay() {
+            document.getElementById('coin-count').innerText = coins;
+        }
+
+
+        // =========================================
+        // RUN THE GAME
+        // =========================================
+
         window.onload = initApp;
 
     </script>
