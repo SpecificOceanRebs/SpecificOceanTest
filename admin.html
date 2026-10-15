@@ -464,7 +464,7 @@ function fillQuestionForm(question) {
     $("title").value = question.title ?? "";
     $("latitude").value = question.latitude ?? "";
     $("longitude").value = question.longitude ?? "";
-    $("questions").value = safeString(question.questions);
+    $("questions").value = safeString(question.question);
     $("options").value = safeString(question.options);
     $("correctAnswer").value = safeString(question.correct_answer);
     $("reward").value = question.reward ?? 10;
