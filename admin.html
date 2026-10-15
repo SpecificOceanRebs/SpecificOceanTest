@@ -499,7 +499,7 @@ $("questionForm").addEventListener("submit", async event => {
             title: $("title").value.trim(),
             latitude: Number($("latitude").value),
             longitude: Number($("longitude").value),
-            questions: parseEditorValue($("questions").value),
+            question: $("questions").value,
             options: parseEditorValue($("options").value),
             correct_answer: parseEditorValue($("correctAnswer").value),
             reward: Number($("reward").value),
