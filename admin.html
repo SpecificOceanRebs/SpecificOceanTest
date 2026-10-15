@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Admin Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f3f5f9;
+    margin: 0;
+    padding: 20px;
+    color: #222;
+}
+.container {
+    max-width: 1100px;
+    margin: auto;
+}
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px #0001;
+}
+h1, h2 { margin-top: 0; }
+input, button, textarea, select {
+    box-sizing: border-box;
+    font: inherit;
+    padding: 10px;
+    margin: 5px 0;
+    max-width: 100%;
+}
+input, textarea, select {
+    width: 100%;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+button {
+    border: 0;
+    border-radius: 6px;
+    background: #2459a9;
+    color: white;
+    cursor: pointer;
+}
+button:hover { opacity: 0.88; }
+button.danger { background: #b42318; }
+button.secondary { background: #555; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+.table-wrap { overflow-x: auto; }
+.hidden { display: none; }
+.message { margin: 10px 0; white-space: pre-wrap; }
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+}
+.score {
+    font-size: 28px;
+    font-weight: bold;
+}
+label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+}
+.small { font-size: 13px; color: #555; }
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>Quiz Admin Dashboard</h1>
+<p>Manage your teams, quiz questions and locations.</p>
+
+<div id="login" class="card">
+    <h2>Admin login</h2>
+    <p>Sign in using the account you created in Supabase Authentication.</p>
+
+    <form id="loginForm">
+        <label>Email</label>
+        <input id="email" type="email" required autocomplete="username">
+
+        <label>Password</label>
+        <input id="password" type="password" required autocomplete="current-password">
+
+        <button type="submit">Log in</button>
+    </form>
+
+    <div id="loginMessage" class="message"></div>
+</div>
+
+<div id="dashboard" class="hidden">
+
+    <div class="card">
+        <span id="signedInAs"></span>
+        <button id="logoutButton" class="secondary">Log out</button>
+        <button id="refreshButton">Refresh dashboard</button>
+        <div id="status" class="message"></div>
+    </div>
+
+    <div class="card">
+        <h2>Team scores</h2>
+        <div id="scores" class="grid"></div>
+    </div>
+
+    <div class="card">
+        <h2>Question answers</h2>
+        <p class="small">See recorded answers for Red Team and Blue Team.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Team</th>
+                        <th>Question</th>
+                        <th>Answer</th>
+                        <th>Correct?</th>
+                        <th>Points</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="answers"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Quiz questions and locations</h2>
+        <p class="small">
+            Select a question to edit its details, coordinates and settings.
+        </p>
+
+        <label>Select a location</label>
+        <select id="questionSelect">
+            <option value="">Loading questions...</option>
+        </select>
+
+        <button id="newQuestionButton" class="secondary">New location / question</button>
+
+        <form id="questionForm">
+            <input type="hidden" id="questionId">
+
+            <label>Location / quest title</label>
+            <input id="title" required>
+
+            <div class="grid">
+                <div>
+                    <label>Latitude</label>
+                    <input id="latitude" type="number" step="any" required>
+                </div>
+                <div>
+                    <label>Longitude</label>
+                    <input id="longitude" type="number" step="any" required>
+                </div>
+            </div>
+
+            <label>Questions (JSON)</label>
+            <textarea id="questions" rows="5" required></textarea>
+
+            <label>Answer options (JSON)</label>
+            <textarea id="options" rows="5" required></textarea>
+
+            <label>Correct answer (JSON or text)</label>
+            <textarea id="correctAnswer" rows="3" required></textarea>
+
+            <div class="grid">
+                <div>
+                    <label>Reward</label>
+                    <input id="reward" type="number" min="0" required>
+                </div>
+                <div>
+                    <label>Unlock distance (metres)</label>
+                    <input id="unlockDistance" type="number" min="0" step="any" required>
+                </div>
+            </div>
+
+            <label>
+                <input id="active" type="checkbox" style="width:auto">
+                Location is active
+            </label>
+
+            <button type="submit">Save location / question</button>
+            <button type="button" id="deleteQuestionButton" class="danger">
+                Delete location / question
+            </button>
+        </form>
+
+        <div id="questionMessage" class="message"></div>
+    </div>
+
+    <div class="card">
+        <h2>Reset a team's progress</h2>
+        <p>
+            This removes the selected team's recorded answers and sets its coins
+            to zero. This cannot easily be undone.
+        </p>
+
+        <label>Select team</label>
+        <select id="resetTeam">
+            <option value="">Choose a team</option>
+            <option value="Red Team">Red Team</option>
+            <option value="Blue Team">Blue Team</option>
+        </select>
+
+        <button id="resetButton" class="danger">Reset selected team</button>
+        <div id="resetMessage" class="message"></div>
+    </div>
+
+</div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://iyaovwydmfwkkevucxke.supabase.co";
+
+// Replace this placeholder with your Supabase publishable key.
+// Paste it directly here; do not share it publicly in chat.
+const SUPABASE_KEY = "sb_publishable_Qq0GB0HCP4yvfxCaCspnKw_NHlwB75C";
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let teams = [];
+let questionsList = [];
+let answersList = [];
+
+const $ = id => document.getElementById(id);
+
+function showMessage(id, message) {
+    $(id).textContent = message;
+}
+
+function errorText(error) {
+    return error?.message || String(error);
+}
+
+function safeString(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") return JSON.stringify(value, null, 2);
+    return String(value);
+}
+
+function parseEditorValue(value) {
+    const trimmed = value.trim();
+
+    if (trimmed === "") return "";
+
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return value;
+    }
+}
+
+function hideDashboard() {
+    $("dashboard").classList.add("hidden");
+    $("login").classList.remove("hidden");
+}
+
+function showDashboard() {
+    $("login").classList.add("hidden");
+    $("dashboard").classList.remove("hidden");
+    $("signedInAs").textContent = "Signed in: " + currentUser.email;
+}
+
+async function checkAdmin() {
+    if (!currentUser) return false;
+
+    const { data, error } = await db
+        .from("admin_users")
+        .select("user_id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(
+            "Could not verify admin access. Check the admin_users permissions. " +
+            error.message
+        );
+    }
+
+    if (!data) {
+        throw new Error("This account is not registered as an administrator.");
+    }
+
+    return true;
+}
+
+async function startDashboard() {
+    try {
+        await checkAdmin();
+        showDashboard();
+        await loadDashboard();
+    } catch (error) {
+        hideDashboard();
+        showMessage("loginMessage", errorText(error));
+    }
+}
+
+$("loginForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    showMessage("loginMessage", "Signing in...");
+
+    const { data, error } = await db.auth.signInWithPassword({
+        email: $("email").value.trim(),
+        password: $("password").value
+    });
+
+    if (error) {
+        showMessage("loginMessage", error.message);
+        return;
+    }
+
+    currentUser = data.user;
+    await startDashboard();
+});
+
+$("logoutButton").addEventListener("click", async () => {
+    await db.auth.signOut();
+    currentUser = null;
+    hideDashboard();
+    showMessage("loginMessage", "You have logged out.");
+});
+
+$("refreshButton").addEventListener("click", loadDashboard);
+
+async function loadDashboard() {
+    showMessage("status", "Loading dashboard...");
+
+    try {
+        const [playersResult, questionsResult, answersResult] = await Promise.all([
+            db.from("players").select("*"),
+            db.from("quiz_questions").select("*").order("title"),
+            db.from("question_answers").select("*").order("answered_at", {
+                ascending: false
+            })
+        ]);
+
+        if (playersResult.error) throw playersResult.error;
+        if (questionsResult.error) throw questionsResult.error;
+        if (answersResult.error) throw answersResult.error;
+
+        // Only show the two intended teams; exclude the guest team.
+        teams = (playersResult.data || []).filter(player =>
+            ["red team", "blue team"].includes(
+                String(player.username).trim().toLowerCase()
+            )
+        );
+
+        questionsList = questionsResult.data || [];
+        answersList = answersResult.data || [];
+
+        renderScores();
+        renderAnswers();
+        renderQuestionSelect();
+
+        showMessage("status", "Dashboard loaded successfully.");
+    } catch (error) {
+        showMessage("status", "Could not load dashboard: " + errorText(error));
+    }
+}
+
+function renderScores() {
+    const container = $("scores");
+    container.replaceChildren();
+
+    for (const teamName of ["Red Team", "Blue Team"]) {
+        const team = teams.find(
+            p => String(p.username).trim().toLowerCase() === teamName.toLowerCase()
+        );
+
+        const box = document.createElement("div");
+        box.className = "card";
+
+        const heading = document.createElement("h3");
+        heading.textContent = teamName;
+
+        const score = document.createElement("div");
+        score.className = "score";
+        score.textContent = team ? (team.coins ?? 0) : "Not found";
+
+        box.append(heading, score);
+        container.appendChild(box);
+    }
+}
+
+function renderAnswers() {
+    const tbody = $("answers");
+    tbody.replaceChildren();
+
+    const questionMap = new Map(
+        questionsList.map(q => [String(q.id), q.title])
+    );
+    const playerMap = new Map(
+        teams.map(p => [String(p.id), p.username])
+    );
+
+    for (const answer of answersList) {
+        const teamName = playerMap.get(String(answer.player_id));
+
+        // Do not show records belonging to the guest or other players.
+        if (!teamName) continue;
+
+        const row = document.createElement("tr");
+        const values = [
+            teamName,
+            questionMap.get(String(answer.question_id)) || answer.question_id,
+            safeString(answer.submitted_answer),
+            answer.is_correct === true ? "Yes" :
+                answer.is_correct === false ? "No" : "—",
+            answer.points_awarded ?? 0,
+            answer.answered_at
+                ? new Date(answer.answered_at).toLocaleString()
+                : "—"
+        ];
+
+        for (const value of values) {
+            const cell = document.createElement("td");
+            cell.textContent = String(value ?? "");
+            row.appendChild(cell);
+        }
+
+        tbody.appendChild(row);
+    }
+}
+
+function renderQuestionSelect() {
+    const select = $("questionSelect");
+    select.replaceChildren();
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Choose a location";
+    select.appendChild(blank);
+
+    for (const question of questionsList) {
+        const option = document.createElement("option");
+        option.value = question.id;
+        option.textContent = question.title || "Untitled location";
+        select.appendChild(option);
+    }
+}
+
+function clearQuestionForm() {
+    $("questionForm").reset();
+    $("questionId").value = "";
+    $("deleteQuestionButton").disabled = true;
+    showMessage("questionMessage", "Creating a new location.");
+}
+
+function fillQuestionForm(question) {
+    $("questionId").value = question.id;
+    $("title").value = question.title ?? "";
+    $("latitude").value = question.latitude ?? "";
+    $("longitude").value = question.longitude ?? "";
+    $("questions").value = safeString(question.questions);
+    $("options").value = safeString(question.options);
+    $("correctAnswer").value = safeString(question.correct_answer);
+    $("reward").value = question.reward ?? 10;
+    $("unlockDistance").value = question.unlock_distance ?? 0;
+    $("active").checked = question.active === true;
+    $("deleteQuestionButton").disabled = false;
+    showMessage("questionMessage", "");
+}
+
+$("questionSelect").addEventListener("change", () => {
+    const question = questionsList.find(
+        q => String(q.id) === $("questionSelect").value
+    );
+
+    if (question) {
+        fillQuestionForm(question);
+    } else {
+        clearQuestionForm();
+    }
+});
+
+$("newQuestionButton").addEventListener("click", () => {
+    $("questionSelect").value = "";
+    clearQuestionForm();
+});
+
+$("questionForm").addEventListener("submit", async event => {
+    event.preventDefault();
+
+    try {
+        const record = {
+            title: $("title").value.trim(),
+            latitude: Number($("latitude").value),
+            longitude: Number($("longitude").value),
+            questions: parseEditorValue($("questions").value),
+            options: parseEditorValue($("options").value),
+            correct_answer: parseEditorValue($("correctAnswer").value),
+            reward: Number($("reward").value),
+            unlock_distance: Number($("unlockDistance").value),
+            active: $("active").checked
+        };
+
+        if (
+            !record.title ||
+            !Number.isFinite(record.latitude) ||
+            !Number.isFinite(record.longitude) ||
+            !Number.isFinite(record.reward) ||
+            !Number.isFinite(record.unlock_distance)
+        ) {
+            throw new Error("Please check the title, coordinates, reward and distance.");
+        }
+
+        let result;
+
+        if ($("questionId").value) {
+            result = await db
+                .from("quiz_questions")
+                .update(record)
+                .eq("id", $("questionId").value)
+                .select();
+        } else {
+            result = await db
+                .from("quiz_questions")
+                .insert(record)
+                .select();
+        }
+
+        if (result.error) throw result.error;
+
+        showMessage("questionMessage", "Saved successfully.");
+        await loadDashboard();
+
+        if (result.data?.[0]) {
+            $("questionSelect").value = result.data[0].id;
+            fillQuestionForm(result.data[0]);
+        }
+    } catch (error) {
+        showMessage("questionMessage", "Could not save: " + errorText(error));
+    }
+});
+
+$("deleteQuestionButton").addEventListener("click", async () => {
+    const id = $("questionId").value;
+
+    if (!id) return;
+
+    if (!confirm(
+        "Delete this location and its question definition? Existing answer records may remain. Continue?"
+    )) return;
+
+    try {
+        const { error } = await db
+            .from("quiz_questions")
+            .delete()
+            .eq("id", id);
+
+        if (error) throw error;
+
+        showMessage("questionMessage", "Location deleted.");
+        clearQuestionForm();
+        await loadDashboard();
+    } catch (error) {
+        showMessage("questionMessage", "Could not delete: " + errorText(error));
+    }
+});
+
+$("resetButton").addEventListener("click", async () => {
+    const teamName = $("resetTeam").value;
+
+    if (!teamName) {
+        showMessage("resetMessage", "Choose a team first.");
+        return;
+    }
+
+    const team = teams.find(
+        p => String(p.username).trim().toLowerCase() === teamName.toLowerCase()
+    );
+
+    if (!team) {
+        showMessage("resetMessage", "Team not found.");
+        return;
+    }
+
+    if (!confirm(
+        `Reset ${teamName}'s coins and remove all its recorded answers? This cannot easily be undone.`
+    )) return;
+
+    try {
+        const { error: answersError } = await db
+            .from("question_answers")
+            .delete()
+            .eq("player_id", team.id);
+
+        if (answersError) throw answersError;
+
+        const { error: playerError } = await db
+            .from("players")
+            .update({ coins: 0 })
+            .eq("id", team.id);
+
+        if (playerError) {
+            throw new Error(
+                "Answers were removed, but the score could not be reset: " +
+                playerError.message
+            );
+        }
+
+        showMessage("resetMessage", teamName + " has been reset.");
+        await loadDashboard();
+    } catch (error) {
+        showMessage("resetMessage", "Reset failed: " + errorText(error));
+    }
+});
+
+async function restoreSession() {
+    const { data, error } = await db.auth.getSession();
+
+    if (error) {
+        showMessage("loginMessage", error.message);
+        return;
+    }
+
+    if (data.session?.user) {
+        currentUser = data.session.user;
+        await startDashboard();
+    }
+}
+
+db.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT") {
+        currentUser = null;
+        hideDashboard();
+    }
+});
+
+$("deleteQuestionButton").disabled = true;
+restoreSession();
+</script>
+</body>
+</html>
